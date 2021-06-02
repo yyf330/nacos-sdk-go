@@ -17,9 +17,11 @@
 package naming_client
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/nacos-group/nacos-sdk-go/clients/nacos_client"
@@ -32,13 +34,18 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var clientConfigTest = *constant.NewClientConfig(
-	constant.WithTimeoutMs(10*1000),
-	constant.WithBeatInterval(5*1000),
-	constant.WithNotLoadCacheAtStart(true),
-)
+var clientConfigTest = constant.ClientConfig{
+	TimeoutMs:           10 * 1000,
+	BeatInterval:        5 * 1000,
+	ListenInterval:      30 * 1000,
+	NotLoadCacheAtStart: true,
+}
 
-var serverConfigTest = *constant.NewServerConfig("console.nacos.io", 80, constant.WithContextPath("/nacos"))
+var serverConfigTest = constant.ServerConfig{
+	IpAddr:      "172.20.200.43",
+	Port:        30010,
+	ContextPath: "/nacos",
+}
 
 var headers = map[string][]string{
 	"Client-Version":  {constant.CLIENT_VERSION},
@@ -49,7 +56,7 @@ var headers = map[string][]string{
 	"Content-Type":    {"application/x-www-form-urlencoded"},
 }
 
-func Test_RegisterServiceInstance_withoutGroupName(t *testing.T) {
+func Test_RegisterServiceInstance_withoutGroupeName(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer func() {
 		ctrl.Finish()
@@ -63,7 +70,6 @@ func Test_RegisterServiceInstance_withoutGroupName(t *testing.T) {
 			"namespaceId": "",
 			"serviceName": "DEFAULT_GROUP@@DEMO",
 			"groupName":   "DEFAULT_GROUP",
-			"app":         "",
 			"clusterName": "",
 			"ip":          "10.0.0.10",
 			"port":        "80",
@@ -89,7 +95,7 @@ func Test_RegisterServiceInstance_withoutGroupName(t *testing.T) {
 	assert.Equal(t, true, success)
 }
 
-func Test_RegisterServiceInstance_withGroupName(t *testing.T) {
+func Test_RegisterServiceInstance_withGroupeName(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer func() {
 		ctrl.Finish()
@@ -104,7 +110,6 @@ func Test_RegisterServiceInstance_withGroupName(t *testing.T) {
 			"namespaceId": "",
 			"serviceName": "test_group@@DEMO2",
 			"groupName":   "test_group",
-			"app":         "",
 			"clusterName": "",
 			"ip":          "10.0.0.10",
 			"port":        "80",
@@ -147,7 +152,6 @@ func Test_RegisterServiceInstance_withCluster(t *testing.T) {
 			"namespaceId": "",
 			"serviceName": "test_group@@DEMO3",
 			"groupName":   "test_group",
-			"app":         "",
 			"clusterName": "test",
 			"ip":          "10.0.0.10",
 			"port":        "80",
@@ -191,7 +195,6 @@ func Test_RegisterServiceInstance_401(t *testing.T) {
 			"namespaceId": "",
 			"serviceName": "test_group@@DEMO4",
 			"groupName":   "test_group",
-			"app":         "",
 			"clusterName": "",
 			"ip":          "10.0.0.10",
 			"port":        "80",
@@ -219,7 +222,7 @@ func Test_RegisterServiceInstance_401(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
-func TestNamingProxy_DeregisterService_WithoutGroupName(t *testing.T) {
+func TestNamingProxy_DeristerService_WithoutGroupName(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer func() {
 		ctrl.Finish()
@@ -252,7 +255,7 @@ func TestNamingProxy_DeregisterService_WithoutGroupName(t *testing.T) {
 	})
 }
 
-func TestNamingProxy_DeregisterService_WithGroupName(t *testing.T) {
+func TestNamingProxy_DeristerService_WithGroupName(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer func() {
 		ctrl.Finish()
@@ -286,7 +289,7 @@ func TestNamingProxy_DeregisterService_WithGroupName(t *testing.T) {
 	})
 }
 
-func TestNamingProxy_DeregisterService_401(t *testing.T) {
+func TestNamingProxy_DeristerService_401(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer func() {
 		ctrl.Finish()
@@ -318,6 +321,39 @@ func TestNamingProxy_DeregisterService_401(t *testing.T) {
 		GroupName:   "test_group",
 		Ephemeral:   true,
 	})
+}
+func TestNamingClient_GetAllNamespacesInfo(t *testing.T) {
+	nc := &nacos_client.NacosClient{}
+	nc.SetServerConfig([]constant.ServerConfig{serverConfigTest})
+	nc.SetClientConfig(clientConfigTest)
+	client, err := NewNamingClient(nc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := client.GetAllNamespacesInfo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byte, _ := json.Marshal(data)
+	t.Log(string(byte))
+	//id, _ := uuid.NewV1()
+	//err = client.CreateNamespace(model.NamespaceReq{
+	//	//CustomNamespaceId: id.String(),
+	//	CustomNamespaceId: "319fcfa9-c2a5-11eb-83ab-08002788ce48",
+	//	NamespaceName:     "daolin11",
+	//	NamespaceDesc:     "test11",
+	//})
+	err = client.UpdateNamespace(model.NamespaceReq{
+		//CustomNamespaceId: id.String(),
+		CustomNamespaceId: "319fcfa9-c2a5-11eb-83ab-08002788ce48",
+		NamespaceName:     "daolin",
+		NamespaceDesc:     "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second * 5)
+	client.DeleteNamespace("319fcfa9-c2a5-11eb-83ab-08002788ce48")
 }
 
 var serviceJsonTest = `{

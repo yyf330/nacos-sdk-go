@@ -27,7 +27,7 @@ import (
 )
 
 func TestBeatReactor_AddBeatInfo(t *testing.T) {
-	br := NewBeatReactor(NamingProxy{nacosServer: &nacos_server.NacosServer{}}, 5000)
+	br := NewBeatReactor(NamingProxy{nacosServer: nacos_server.NacosServer{}}, 5000)
 	serviceName := "Test"
 	groupName := "public"
 	beatInfo := model.BeatInfo{
@@ -46,7 +46,7 @@ func TestBeatReactor_AddBeatInfo(t *testing.T) {
 }
 
 func TestBeatReactor_RemoveBeatInfo(t *testing.T) {
-	br := NewBeatReactor(NamingProxy{nacosServer: &nacos_server.NacosServer{}}, 5000)
+	br := NewBeatReactor(NamingProxy{nacosServer: nacos_server.NacosServer{}}, 5000)
 	serviceName := "Test"
 	groupName := "public"
 	beatInfo1 := model.BeatInfo{

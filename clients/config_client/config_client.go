@@ -18,7 +18,6 @@ package config_client
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"os"
 	"strconv"
@@ -40,19 +39,22 @@ import (
 
 type ConfigClient struct {
 	nacos_client.INacosClient
-	kmsClient        *kms.Client
-	localConfigs     []vo.ConfigParam
-	mutex            sync.Mutex
-	configProxy      ConfigProxy
-	configCacheDir   string
-	currentTaskCount int
-	cacheMap         cache.ConcurrentMap
-	schedulerMap     cache.ConcurrentMap
+	kmsClient      *kms.Client
+	localConfigs   []vo.ConfigParam
+	mutex          sync.Mutex
+	configProxy    ConfigProxy
+	configCacheDir string
 }
 
 const (
 	perTaskConfigSize = 3000
 	executorErrDelay  = 5 * time.Second
+)
+
+var (
+	currentTaskCount int
+	cacheMap         cache.ConcurrentMap
+	schedulerMap     cache.ConcurrentMap
 )
 
 type cacheData struct {
@@ -65,6 +67,7 @@ type cacheData struct {
 	md5               string
 	appName           string
 	taskId            int
+	configClient      *ConfigClient
 }
 
 type cacheDataListener struct {
@@ -72,14 +75,8 @@ type cacheDataListener struct {
 	lastMd5  string
 }
 
-func NewConfigClient(nc nacos_client.INacosClient) (*ConfigClient, error) {
-	config := &ConfigClient{
-		cacheMap:     cache.NewConcurrentMap(),
-		schedulerMap: cache.NewConcurrentMap(),
-	}
-	config.schedulerMap.Set("root", true)
-	go config.delayScheduler(time.NewTimer(1*time.Millisecond), 10*time.Millisecond, "root", config.listenConfigExecutor())
-
+func NewConfigClient(nc nacos_client.INacosClient) (ConfigClient, error) {
+	config := ConfigClient{}
 	config.INacosClient = nc
 	clientConfig, err := nc.GetClientConfig()
 	if err != nil {
@@ -111,6 +108,10 @@ func NewConfigClient(nc nacos_client.INacosClient) (*ConfigClient, error) {
 		}
 		config.kmsClient = kmsClient
 	}
+	cacheMap = cache.NewConcurrentMap()
+	schedulerMap = cache.NewConcurrentMap()
+	schedulerMap.Set("root", true)
+	go delayScheduler(time.NewTimer(1*time.Millisecond), 10*time.Millisecond, "root", listenConfigExecutor())
 	return config, err
 }
 
@@ -145,7 +146,7 @@ func (client *ConfigClient) GetConfig(param vo.ConfigParam) (content string, err
 }
 
 func (client *ConfigClient) decrypt(dataId, content string) (string, error) {
-	if client.kmsClient != nil && strings.HasPrefix(dataId, "cipher-") {
+	if strings.HasPrefix(dataId, "cipher-") && client.kmsClient != nil {
 		request := kms.CreateDecryptRequest()
 		request.Method = "POST"
 		request.Scheme = "https"
@@ -153,27 +154,11 @@ func (client *ConfigClient) decrypt(dataId, content string) (string, error) {
 		request.CiphertextBlob = content
 		response, err := client.kmsClient.Decrypt(request)
 		if err != nil {
-			return "", fmt.Errorf("kms decrypt failed: %v", err)
+			return "", errors.New("kms decrypt failed")
 		}
 		content = response.Plaintext
 	}
-	return content, nil
-}
 
-func (client *ConfigClient) encrypt(dataId, content string) (string, error) {
-	if client.kmsClient != nil && strings.HasPrefix(dataId, "cipher-") {
-		request := kms.CreateEncryptRequest()
-		request.Method = "POST"
-		request.Scheme = "https"
-		request.AcceptFormat = "json"
-		request.KeyId = "alias/acs/acm" // use default key
-		request.Plaintext = content
-		response, err := client.kmsClient.Encrypt(request)
-		if err != nil {
-			return "", fmt.Errorf("kms encrypt failed: %v", err)
-		}
-		content = response.CiphertextBlob
-	}
 	return content, nil
 }
 
@@ -187,8 +172,12 @@ func (client *ConfigClient) getConfigInner(param vo.ConfigParam) (content string
 		return "", err
 	}
 	clientConfig, _ := client.GetClientConfig()
-	cacheKey := util.GetConfigCacheKey(param.DataId, param.Group, clientConfig.NamespaceId)
-	content, err = client.configProxy.GetConfigProxy(param, clientConfig.NamespaceId, clientConfig.AccessKey, clientConfig.SecretKey)
+	tenant := clientConfig.NamespaceId
+	if param.Namespace != "" {
+		tenant = param.Namespace
+	}
+	cacheKey := util.GetConfigCacheKey(param.DataId, param.Group, tenant)
+	content, err = client.configProxy.GetConfigProxy(param, tenant, clientConfig.AccessKey, clientConfig.SecretKey)
 
 	if err != nil {
 		logger.Infof("get config from server error:%+v ", err)
@@ -196,8 +185,7 @@ func (client *ConfigClient) getConfigInner(param vo.ConfigParam) (content string
 			nacosErr := err.(*nacos_error.NacosError)
 			if nacosErr.ErrorCode() == "404" {
 				cache.WriteConfigToFile(cacheKey, client.configCacheDir, "")
-				logger.Warnf("[client.GetConfig] config not found, dataId: %s, group: %s, namespaceId: %s.", param.DataId, param.Group, clientConfig.NamespaceId)
-				return "", nil
+				return "", errors.New("config not found")
 			}
 			if nacosErr.ErrorCode() == "403" {
 				return "", errors.New("get config forbidden")
@@ -226,13 +214,12 @@ func (client *ConfigClient) PublishConfig(param vo.ConfigParam) (published bool,
 	if len(param.Content) <= 0 {
 		err = errors.New("[client.PublishConfig] param.content can not be empty")
 	}
-
-	param.Content, err = client.encrypt(param.DataId, param.Content)
-	if err != nil {
-		return false, err
-	}
 	clientConfig, _ := client.GetClientConfig()
-	return client.configProxy.PublishConfigProxy(param, clientConfig.NamespaceId, clientConfig.AccessKey, clientConfig.SecretKey)
+	tenant := clientConfig.NamespaceId
+	if param.Namespace != "" {
+		tenant = param.Namespace
+	}
+	return client.configProxy.PublishConfigProxy(param, tenant, clientConfig.AccessKey, clientConfig.SecretKey)
 }
 
 func (client *ConfigClient) DeleteConfig(param vo.ConfigParam) (deleted bool, err error) {
@@ -244,7 +231,11 @@ func (client *ConfigClient) DeleteConfig(param vo.ConfigParam) (deleted bool, er
 	}
 
 	clientConfig, _ := client.GetClientConfig()
-	return client.configProxy.DeleteConfigProxy(param, clientConfig.NamespaceId, clientConfig.AccessKey, clientConfig.SecretKey)
+	tenant := clientConfig.NamespaceId
+	if param.Namespace != "" {
+		tenant = param.Namespace
+	}
+	return client.configProxy.DeleteConfigProxy(param, tenant, clientConfig.AccessKey, clientConfig.SecretKey)
 }
 
 //Cancel Listen Config
@@ -254,27 +245,31 @@ func (client *ConfigClient) CancelListenConfig(param vo.ConfigParam) (err error)
 		logger.Errorf("[checkConfigInfo.GetClientConfig] failed,err:%+v", err)
 		return
 	}
-	client.cacheMap.Remove(util.GetConfigCacheKey(param.DataId, param.Group, clientConfig.NamespaceId))
+	tenant := clientConfig.NamespaceId
+	if param.Namespace != "" {
+		tenant = param.Namespace
+	}
+	cacheMap.Remove(util.GetConfigCacheKey(param.DataId, param.Group, tenant))
 	logger.Infof("Cancel listen config DataId:%s Group:%s", param.DataId, param.Group)
-	remakeId := int(math.Ceil(float64(client.cacheMap.Count()) / float64(perTaskConfigSize)))
-	if remakeId < client.currentTaskCount {
-		client.remakeCacheDataTaskId(remakeId)
+	remakeId := int(math.Ceil(float64(len(cacheMap.Keys())) / float64(perTaskConfigSize)))
+	if remakeId < currentTaskCount {
+		remakeCacheDataTaskId(remakeId)
 	}
 	return err
 }
 
 //Remake cache data taskId
-func (client *ConfigClient) remakeCacheDataTaskId(remakeId int) {
+func remakeCacheDataTaskId(remakeId int) {
 	for i := 0; i < remakeId; i++ {
 		count := 0
-		for _, key := range client.cacheMap.Keys() {
+		for _, key := range cacheMap.Keys() {
 			if count == perTaskConfigSize {
 				break
 			}
-			if value, ok := client.cacheMap.Get(key); ok {
+			if value, ok := cacheMap.Get(key); ok {
 				cData := value.(cacheData)
 				cData.taskId = i
-				client.cacheMap.Set(key, cData)
+				cacheMap.Set(key, cData)
 			}
 			count++
 		}
@@ -295,25 +290,23 @@ func (client *ConfigClient) ListenConfig(param vo.ConfigParam) (err error) {
 		err = errors.New("[checkConfigInfo.GetClientConfig] failed")
 		return err
 	}
-
-	key := util.GetConfigCacheKey(param.DataId, param.Group, clientConfig.NamespaceId)
+	tenant := clientConfig.NamespaceId
+	if param.Namespace != "" {
+		tenant = param.Namespace
+	}
+	key := util.GetConfigCacheKey(param.DataId, param.Group, tenant)
 	var cData cacheData
-	if v, ok := client.cacheMap.Get(key); ok {
+	if v, ok := cacheMap.Get(key); ok {
 		cData = v.(cacheData)
 		cData.isInitializing = true
 	} else {
-		var (
-			content string
-			md5Str  string
-		)
-		content, fileErr := cache.ReadConfigFromFile(key, client.configCacheDir)
-		if fileErr != nil {
-			logger.Errorf("[cache.ReadConfigFromFile] error: %+v", fileErr)
+		content, err := cache.ReadConfigFromFile(key, client.configCacheDir)
+		if err != nil {
+			logger.Errorf("[cache.ReadConfigFromFile] error: %+v", err)
+			content = ""
 		}
-		if len(content) > 0 {
-			md5Str = util.Md5(content)
-		}
-		listener := &cacheDataListener{
+		md5Str := util.Md5(content)
+		listener := cacheDataListener{
 			listener: param.OnChange,
 			lastMd5:  md5Str,
 		}
@@ -325,20 +318,21 @@ func (client *ConfigClient) ListenConfig(param vo.ConfigParam) (err error) {
 			tenant:            clientConfig.NamespaceId,
 			content:           content,
 			md5:               md5Str,
-			cacheDataListener: listener,
-			taskId:            client.cacheMap.Count() / perTaskConfigSize,
+			cacheDataListener: &listener,
+			taskId:            len(cacheMap.Keys()) / perTaskConfigSize,
+			configClient:      client,
 		}
 	}
-	client.cacheMap.Set(key, cData)
+	cacheMap.Set(key, cData)
 	return
 }
 
 //Delay Scheduler
 //initialDelay the time to delay first execution
 //delay the delay between the termination of one execution and the commencement of the next
-func (client *ConfigClient) delayScheduler(t *time.Timer, delay time.Duration, taskId string, execute func() error) {
+func delayScheduler(t *time.Timer, delay time.Duration, taskId string, execute func() error) {
 	for {
-		if v, ok := client.schedulerMap.Get(taskId); ok {
+		if v, ok := schedulerMap.Get(taskId); ok {
 			if !v.(bool) {
 				return
 			}
@@ -353,37 +347,39 @@ func (client *ConfigClient) delayScheduler(t *time.Timer, delay time.Duration, t
 }
 
 //Listen for the configuration executor
-func (client *ConfigClient) listenConfigExecutor() func() error {
+func listenConfigExecutor() func() error {
 	return func() error {
-		listenerSize := client.cacheMap.Count()
+		listenerSize := len(cacheMap.Keys())
 		taskCount := int(math.Ceil(float64(listenerSize) / float64(perTaskConfigSize)))
 
-		if taskCount > client.currentTaskCount {
-			for i := client.currentTaskCount; i < taskCount; i++ {
-				client.schedulerMap.Set(strconv.Itoa(i), true)
-				go client.delayScheduler(time.NewTimer(1*time.Millisecond), 10*time.Millisecond, strconv.Itoa(i), client.longPulling(i))
+		if taskCount > currentTaskCount {
+			for i := currentTaskCount; i < taskCount; i++ {
+				schedulerMap.Set(strconv.Itoa(i), true)
+				go delayScheduler(time.NewTimer(1*time.Millisecond), 10*time.Millisecond, strconv.Itoa(i), longPulling(i))
 			}
-			client.currentTaskCount = taskCount
-		} else if taskCount < client.currentTaskCount {
-			for i := taskCount; i < client.currentTaskCount; i++ {
-				if _, ok := client.schedulerMap.Get(strconv.Itoa(i)); ok {
-					client.schedulerMap.Set(strconv.Itoa(i), false)
+			currentTaskCount = taskCount
+		} else if taskCount < currentTaskCount {
+			for i := taskCount; i < currentTaskCount; i++ {
+				if _, ok := schedulerMap.Get(strconv.Itoa(i)); ok {
+					schedulerMap.Set(strconv.Itoa(i), false)
 				}
 			}
-			client.currentTaskCount = taskCount
+			currentTaskCount = taskCount
 		}
 		return nil
 	}
 }
 
 //Long polling listening configuration
-func (client *ConfigClient) longPulling(taskId int) func() error {
+func longPulling(taskId int) func() error {
 	return func() error {
 		var listeningConfigs string
+		var client *ConfigClient
 		initializationList := make([]cacheData, 0)
-		for _, key := range client.cacheMap.Keys() {
-			if value, ok := client.cacheMap.Get(key); ok {
+		for _, key := range cacheMap.Keys() {
+			if value, ok := cacheMap.Get(key); ok {
 				cData := value.(cacheData)
+				client = cData.configClient
 				if cData.taskId == taskId {
 					if cData.isInitializing {
 						initializationList = append(initializationList, cData)
@@ -409,7 +405,7 @@ func (client *ConfigClient) longPulling(taskId int) func() error {
 			params[constant.KEY_LISTEN_CONFIGS] = listeningConfigs
 
 			var changed string
-			changedTmp, err := client.configProxy.ListenConfig(params, len(initializationList) > 0, clientConfig.NamespaceId, clientConfig.AccessKey, clientConfig.SecretKey)
+			changedTmp, err := client.configProxy.ListenConfig(params, len(initializationList) > 0, clientConfig.AccessKey, clientConfig.SecretKey)
 			if err == nil {
 				changed = changedTmp
 			} else {
@@ -422,7 +418,7 @@ func (client *ConfigClient) longPulling(taskId int) func() error {
 			}
 			for _, v := range initializationList {
 				v.isInitializing = false
-				client.cacheMap.Set(util.GetConfigCacheKey(v.dataId, v.group, v.tenant), v)
+				cacheMap.Set(util.GetConfigCacheKey(v.dataId, v.group, clientConfig.NamespaceId), v)
 			}
 			if len(strings.ToLower(strings.Trim(changed, " "))) == 0 {
 				logger.Info("[client.ListenConfig] no change")
@@ -442,7 +438,7 @@ func (client *ConfigClient) callListener(changed, tenant string) {
 	for _, config := range changedConfigs {
 		attrs := strings.Split(config, "%02")
 		if len(attrs) >= 2 {
-			if value, ok := client.cacheMap.Get(util.GetConfigCacheKey(attrs[0], attrs[1], tenant)); ok {
+			if value, ok := cacheMap.Get(util.GetConfigCacheKey(attrs[0], attrs[1], tenant)); ok {
 				cData := value.(cacheData)
 				content, err := client.getConfigInner(vo.ConfigParam{
 					DataId: cData.dataId,
@@ -457,7 +453,7 @@ func (client *ConfigClient) callListener(changed, tenant string) {
 				if cData.md5 != cData.cacheDataListener.lastMd5 {
 					go cData.cacheDataListener.listener(tenant, attrs[1], attrs[0], cData.content)
 					cData.cacheDataListener.lastMd5 = cData.md5
-					client.cacheMap.Set(util.GetConfigCacheKey(cData.dataId, cData.group, tenant), cData)
+					cacheMap.Set(util.GetConfigCacheKey(cData.dataId, cData.group, tenant), cData)
 				}
 			}
 		}
@@ -470,47 +466,11 @@ func (client *ConfigClient) buildBasePath(serverConfig constant.ServerConfig) (b
 	return
 }
 
-func (client *ConfigClient) SearchConfig(param vo.SearchConfigParam) (*model.ConfigPage, error) {
+func (client *ConfigClient) SearchConfig(param vo.SearchConfigParm) (*model.ConfigPage, error) {
 	return client.searchConfigInner(param)
 }
 
-func (client *ConfigClient) PublishAggr(param vo.ConfigParam) (published bool,
-	err error) {
-	if len(param.DataId) <= 0 {
-		err = errors.New("[client.PublishAggr] param.dataId can not be empty")
-	}
-	if len(param.Group) <= 0 {
-		err = errors.New("[client.PublishAggr] param.group can not be empty")
-	}
-	if len(param.Content) <= 0 {
-		err = errors.New("[client.PublishAggr] param.content can not be empty")
-	}
-	if len(param.DatumId) <= 0 {
-		err = errors.New("[client.PublishAggr] param.DatumId can not be empty")
-	}
-	clientConfig, _ := client.GetClientConfig()
-	return client.configProxy.PublishAggProxy(param, clientConfig.NamespaceId, clientConfig.AccessKey, clientConfig.SecretKey)
-}
-
-func (client *ConfigClient) RemoveAggr(param vo.ConfigParam) (published bool,
-	err error) {
-	if len(param.DataId) <= 0 {
-		err = errors.New("[client.DeleteAggr] param.dataId can not be empty")
-	}
-	if len(param.Group) <= 0 {
-		err = errors.New("[client.DeleteAggr] param.group can not be empty")
-	}
-	if len(param.Content) <= 0 {
-		err = errors.New("[client.DeleteAggr] param.content can not be empty")
-	}
-	if len(param.DatumId) <= 0 {
-		err = errors.New("[client.DeleteAggr] param.DatumId can not be empty")
-	}
-	clientConfig, _ := client.GetClientConfig()
-	return client.configProxy.DeleteAggProxy(param, clientConfig.NamespaceId, clientConfig.AccessKey, clientConfig.SecretKey)
-}
-
-func (client *ConfigClient) searchConfigInner(param vo.SearchConfigParam) (*model.ConfigPage, error) {
+func (client *ConfigClient) searchConfigInner(param vo.SearchConfigParm) (*model.ConfigPage, error) {
 	if param.Search != "accurate" && param.Search != "blur" {
 		return nil, errors.New("[client.searchConfigInner] param.search must be accurate or blur")
 	}
@@ -521,13 +481,17 @@ func (client *ConfigClient) searchConfigInner(param vo.SearchConfigParam) (*mode
 		param.PageSize = 10
 	}
 	clientConfig, _ := client.GetClientConfig()
-	configItems, err := client.configProxy.SearchConfigProxy(param, clientConfig.NamespaceId, clientConfig.AccessKey, clientConfig.SecretKey)
+	tenant := clientConfig.NamespaceId
+	if param.Namespace != "" {
+		tenant = param.Namespace
+	}
+	configItems, err := client.configProxy.SearchConfigProxy(param, tenant, clientConfig.AccessKey, clientConfig.SecretKey)
 	if err != nil {
 		logger.Errorf("search config from server error:%+v ", err)
 		if _, ok := err.(*nacos_error.NacosError); ok {
 			nacosErr := err.(*nacos_error.NacosError)
 			if nacosErr.ErrorCode() == "404" {
-				return nil, nil
+				return nil, errors.New("config not found")
 			}
 			if nacosErr.ErrorCode() == "403" {
 				return nil, errors.New("get config forbidden")
@@ -536,4 +500,66 @@ func (client *ConfigClient) searchConfigInner(param vo.SearchConfigParam) (*mode
 		return nil, err
 	}
 	return configItems, nil
+}
+
+func (client *ConfigClient) SearchConfigHistory(param vo.SearchConfigParm) (*model.ConfigPage, error) {
+	return client.searchConfigHistoryInner(param)
+}
+
+func (client *ConfigClient) searchConfigHistoryInner(param vo.SearchConfigParm) (*model.ConfigPage, error) {
+	if param.Search != "accurate" && param.Search != "blur" {
+		return nil, errors.New("[client.searchConfigHistoryInner] param.search must be accurate or blur")
+	}
+	if param.PageNo <= 0 {
+		param.PageNo = 1
+	}
+	if param.PageSize <= 0 {
+		param.PageSize = 10
+	}
+
+	clientConfig, _ := client.GetClientConfig()
+	tenant := clientConfig.NamespaceId
+
+	if param.Namespace != "" {
+		tenant = param.Namespace
+	}
+	configItems, err := client.configProxy.SearchConfigHistoryProxy(param, tenant, clientConfig.AccessKey, clientConfig.SecretKey)
+	if err != nil {
+		logger.Errorf("search config from server error:%+v ", err)
+		if _, ok := err.(*nacos_error.NacosError); ok {
+			nacosErr := err.(*nacos_error.NacosError)
+			if nacosErr.ErrorCode() == "404" {
+				return nil, errors.New("config not found")
+			}
+			if nacosErr.ErrorCode() == "403" {
+				return nil, errors.New("get config forbidden")
+			}
+		}
+		return nil, err
+	}
+	return configItems, nil
+}
+
+func (client *ConfigClient) GetConfigHistoryPre(id string) (content string, err error) {
+	if len(id) <= 0 {
+		err = errors.New("[client.GetConfigHistoryPre] param.dataId can not be empty")
+		return "", err
+	}
+	clientConfig, _ := client.GetClientConfig()
+	content, err = client.configProxy.GetConfigHistoryPre(id, clientConfig.NamespaceId, clientConfig.AccessKey, clientConfig.SecretKey)
+
+	if err != nil {
+		logger.Infof("get config from server error:%+v ", err)
+		if _, ok := err.(*nacos_error.NacosError); ok {
+			nacosErr := err.(*nacos_error.NacosError)
+			if nacosErr.ErrorCode() == "404" {
+				return "", errors.New("config not found")
+			}
+			if nacosErr.ErrorCode() == "403" {
+				return "", errors.New("get config forbidden")
+			}
+		}
+	}
+
+	return
 }

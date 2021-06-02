@@ -33,7 +33,7 @@ import (
 )
 
 type ConfigProxy struct {
-	nacosServer  *nacos_server.NacosServer
+	nacosServer  nacos_server.NacosServer
 	clientConfig constant.ClientConfig
 }
 
@@ -64,7 +64,7 @@ func (cp *ConfigProxy) GetConfigProxy(param vo.ConfigParam, tenant, accessKey, s
 	return result, err
 }
 
-func (cp *ConfigProxy) SearchConfigProxy(param vo.SearchConfigParam, tenant, accessKey, secretKey string) (*model.ConfigPage, error) {
+func (cp *ConfigProxy) SearchConfigProxy(param vo.SearchConfigParm, tenant, accessKey, secretKey string) (*model.ConfigPage, error) {
 	params := util.TransformObject2Param(param)
 	if len(tenant) > 0 {
 		params["tenant"] = tenant
@@ -89,6 +89,47 @@ func (cp *ConfigProxy) SearchConfigProxy(param vo.SearchConfigParam, tenant, acc
 	}
 	return &configPage, nil
 }
+
+func (cp *ConfigProxy) GetConfigHistoryPre(id, tenant, accessKey, secretKey string) (string, error) {
+	params := map[string]string{}
+	if len(tenant) > 0 {
+		params["tenant"] = tenant
+	}
+	params["id"] = id
+	var headers = map[string]string{}
+	headers["accessKey"] = accessKey
+	headers["secretKey"] = secretKey
+
+	result, err := cp.nacosServer.ReqConfigApi(constant.CONFIGHISTORYPREPATH, params, headers, http.MethodGet, cp.clientConfig.TimeoutMs)
+	return result, err
+}
+
+func (cp *ConfigProxy) SearchConfigHistoryProxy(param vo.SearchConfigParm, tenant, accessKey, secretKey string) (*model.ConfigPage, error) {
+	params := util.TransformObject2Param(param)
+	if len(tenant) > 0 {
+		params["tenant"] = tenant
+	}
+	if _, ok := params["group"]; !ok {
+		params["group"] = ""
+	}
+	if _, ok := params["dataId"]; !ok {
+		params["dataId"] = ""
+	}
+	var headers = map[string]string{}
+	headers["accessKey"] = accessKey
+	headers["secretKey"] = secretKey
+	result, err := cp.nacosServer.ReqConfigApi(constant.CONFIGHISTORYPATH, params, headers, http.MethodGet, cp.clientConfig.TimeoutMs)
+	if err != nil {
+		return nil, err
+	}
+	var configPage model.ConfigPage
+	err = json.Unmarshal([]byte(result), &configPage)
+	if err != nil {
+		return nil, err
+	}
+	return &configPage, nil
+}
+
 func (cp *ConfigProxy) PublishConfigProxy(param vo.ConfigParam, tenant, accessKey, secretKey string) (bool, error) {
 	params := util.TransformObject2Param(param)
 	if len(tenant) > 0 {
@@ -107,38 +148,6 @@ func (cp *ConfigProxy) PublishConfigProxy(param vo.ConfigParam, tenant, accessKe
 	} else {
 		return false, errors.New("[client.PublishConfig] publish config failed:" + result)
 	}
-}
-
-func (cp *ConfigProxy) PublishAggProxy(param vo.ConfigParam, tenant, accessKey, secretKey string) (bool, error) {
-	params := util.TransformObject2Param(param)
-	if len(tenant) > 0 {
-		params["tenant"] = tenant
-	}
-	params["method"] = "addDatum"
-	var headers = map[string]string{}
-	headers["accessKey"] = accessKey
-	headers["secretKey"] = secretKey
-	_, err := cp.nacosServer.ReqConfigApi(constant.CONFIG_AGG_PATH, params, headers, http.MethodPost, cp.clientConfig.TimeoutMs)
-	if err != nil {
-		return false, errors.New("[client.PublishAggProxy] publish agg failed:" + err.Error())
-	}
-	return true, nil
-}
-
-func (cp *ConfigProxy) DeleteAggProxy(param vo.ConfigParam, tenant, accessKey, secretKey string) (bool, error) {
-	params := util.TransformObject2Param(param)
-	if len(tenant) > 0 {
-		params["tenant"] = tenant
-	}
-	params["method"] = "deleteDatum"
-	var headers = map[string]string{}
-	headers["accessKey"] = accessKey
-	headers["secretKey"] = secretKey
-	_, err := cp.nacosServer.ReqConfigApi(constant.CONFIG_AGG_PATH, params, headers, http.MethodPost, cp.clientConfig.TimeoutMs)
-	if err != nil {
-		return false, errors.New("[client.DeleteAggProxy] delete agg failed:" + err.Error())
-	}
-	return true, nil
 }
 
 func (cp *ConfigProxy) DeleteConfigProxy(param vo.ConfigParam, tenant, accessKey, secretKey string) (bool, error) {
@@ -160,7 +169,7 @@ func (cp *ConfigProxy) DeleteConfigProxy(param vo.ConfigParam, tenant, accessKey
 	}
 }
 
-func (cp *ConfigProxy) ListenConfig(params map[string]string, isInitializing bool, tenant, accessKey, secretKey string) (string, error) {
+func (cp *ConfigProxy) ListenConfig(params map[string]string, isInitializing bool, accessKey, secretKey string) (string, error) {
 	//fixed at 30000ms，avoid frequent request on the server
 	var listenInterval uint64 = 30000
 	headers := map[string]string{
@@ -173,10 +182,6 @@ func (cp *ConfigProxy) ListenConfig(params map[string]string, isInitializing boo
 
 	headers["accessKey"] = accessKey
 	headers["secretKey"] = secretKey
-
-	if len(tenant) > 0 {
-		params["tenant"] = tenant
-	}
 	logger.Infof("[client.ListenConfig] request params:%+v header:%+v \n", params, headers)
 	// In order to prevent the server from handling the delay of the client's long task,
 	// increase the client's read timeout to avoid this problem.

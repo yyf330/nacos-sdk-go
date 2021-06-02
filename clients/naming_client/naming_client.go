@@ -24,14 +24,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/nacos-group/nacos-sdk-go/clients/cache"
 	"github.com/nacos-group/nacos-sdk-go/clients/nacos_client"
 	"github.com/nacos-group/nacos-sdk-go/common/constant"
+	"github.com/nacos-group/nacos-sdk-go/common/http_agent"
 	"github.com/nacos-group/nacos-sdk-go/common/logger"
 	"github.com/nacos-group/nacos-sdk-go/model"
 	"github.com/nacos-group/nacos-sdk-go/util"
 	"github.com/nacos-group/nacos-sdk-go/vo"
-	"github.com/pkg/errors"
 )
 
 type NamingClient struct {
@@ -51,7 +53,6 @@ type Chooser struct {
 }
 
 func NewNamingClient(nc nacos_client.INacosClient) (NamingClient, error) {
-	rand.Seed(time.Now().UnixNano())
 	naming := NamingClient{}
 	clientConfig, err := nc.GetClientConfig()
 	if err != nil {
@@ -62,10 +63,16 @@ func NewNamingClient(nc nacos_client.INacosClient) (NamingClient, error) {
 	if err != nil {
 		return naming, err
 	}
+
+	if _, _err := nc.GetHttpAgent(); _err != nil {
+		_ = nc.SetHttpAgent(&http_agent.HttpAgent{})
+	}
+
 	httpAgent, err := nc.GetHttpAgent()
 	if err != nil {
 		return naming, err
 	}
+
 	err = logger.InitLogger(logger.Config{
 		Level:        clientConfig.LogLevel,
 		OutputPath:   clientConfig.LogDir,
@@ -90,9 +97,6 @@ func NewNamingClient(nc nacos_client.INacosClient) (NamingClient, error) {
 
 // 注册服务实例
 func (sc *NamingClient) RegisterInstance(param vo.RegisterInstanceParam) (bool, error) {
-	if param.ServiceName == "" {
-		return false, errors.New("serviceName cannot be empty!")
-	}
 	if len(param.GroupName) == 0 {
 		param.GroupName = constant.DEFAULT_GROUP
 	}
@@ -117,7 +121,6 @@ func (sc *NamingClient) RegisterInstance(param vo.RegisterInstanceParam) (bool, 
 		Cluster:     param.ClusterName,
 		Weight:      param.Weight,
 		Period:      util.GetDurationWithDefault(param.Metadata, constant.HEART_BEAT_INTERVAL, time.Second*5),
-		State:       model.StateRunning,
 	}
 	_, err := sc.serviceProxy.RegisterInstance(util.GetGroupName(param.ServiceName, param.GroupName), param.GroupName, instance)
 	if err != nil {
@@ -173,8 +176,8 @@ func (sc *NamingClient) SelectAllInstances(param vo.SelectAllInstancesParam) ([]
 		param.GroupName = constant.DEFAULT_GROUP
 	}
 	service, err := sc.hostReactor.GetServiceInfo(util.GetGroupName(param.ServiceName, param.GroupName), strings.Join(param.Clusters, ","))
-	if err != nil || service.Hosts == nil || len(service.Hosts) == 0 {
-		return []model.Instance{}, err
+	if service.Hosts == nil || len(service.Hosts) == 0 {
+		return []model.Instance{}, errors.New("instance list is empty!")
 	}
 	return service.Hosts, err
 }
@@ -283,6 +286,7 @@ func newChooser(instances []model.Instance) Chooser {
 }
 
 func (chs Chooser) pick() model.Instance {
+	rand.Seed(time.Now().Unix())
 	r := rand.Intn(chs.max) + 1
 	i := sort.SearchInts(chs.totals, r)
 	return chs.data[i]
@@ -300,12 +304,9 @@ func (sc *NamingClient) Subscribe(param *vo.SubscribeParam) error {
 	}
 
 	sc.subCallback.AddCallbackFuncs(util.GetGroupName(param.ServiceName, param.GroupName), strings.Join(param.Clusters, ","), &param.SubscribeCallback)
-	svc, err := sc.GetService(serviceParam)
+	_, err := sc.GetService(serviceParam)
 	if err != nil {
 		return err
-	}
-	if !sc.hostReactor.serviceProxy.clientConfig.NotLoadCacheAtStart {
-		sc.subCallback.ServiceChanged(&svc)
 	}
 	return nil
 }
@@ -314,4 +315,23 @@ func (sc *NamingClient) Subscribe(param *vo.SubscribeParam) error {
 func (sc *NamingClient) Unsubscribe(param *vo.SubscribeParam) error {
 	sc.subCallback.RemoveCallbackFuncs(util.GetGroupName(param.ServiceName, param.GroupName), strings.Join(param.Clusters, ","), &param.SubscribeCallback)
 	return nil
+}
+
+//get namespaces
+func (sc *NamingClient) GetAllNamespacesInfo() (model.NamespaceList, error) {
+	services := sc.hostReactor.GetAllNamespaceInfo()
+	return services, nil
+}
+
+func (sc *NamingClient) CreateNamespace(data model.NamespaceReq) error {
+	return sc.hostReactor.CreateNamespace(data)
+}
+
+func (sc *NamingClient) UpdateNamespace(data model.NamespaceReq) error {
+	return sc.hostReactor.UpdateNamespace(data)
+
+}
+
+func (sc *NamingClient) DeleteNamespace(id string) error {
+	return sc.hostReactor.DeleteNamespace(id)
 }

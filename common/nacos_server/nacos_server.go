@@ -49,12 +49,11 @@ type NacosServer struct {
 	endpoint            string
 	lastSrvRefTime      int64
 	vipSrvRefInterMills int64
-	contextPath         string
 }
 
-func NewNacosServer(serverList []constant.ServerConfig, clientCfg constant.ClientConfig, httpAgent http_agent.IHttpAgent, timeoutMs uint64, endpoint string) (*NacosServer, error) {
+func NewNacosServer(serverList []constant.ServerConfig, clientCfg constant.ClientConfig, httpAgent http_agent.IHttpAgent, timeoutMs uint64, endpoint string) (NacosServer, error) {
 	if len(serverList) == 0 && endpoint == "" {
-		return &NacosServer{}, errors.New("both serverlist  and  endpoint are empty")
+		return NacosServer{}, errors.New("both serverlist  and  endpoint are empty")
 	}
 
 	securityLogin := security.NewAuthClient(clientCfg, serverList, httpAgent)
@@ -66,17 +65,16 @@ func NewNacosServer(serverList []constant.ServerConfig, clientCfg constant.Clien
 		timeoutMs:           timeoutMs,
 		endpoint:            endpoint,
 		vipSrvRefInterMills: 10000,
-		contextPath:         clientCfg.ContextPath,
 	}
 	ns.initRefreshSrvIfNeed()
 	_, err := securityLogin.Login()
 
 	if err != nil {
-		logger.Errorf("login has error %+v", err)
+		return ns, err
 	}
 
 	securityLogin.AutoRefresh()
-	return &ns, nil
+	return ns, nil
 }
 
 func (server *NacosServer) callConfigServer(api string, params map[string]string, newHeaders map[string]string,
@@ -87,8 +85,7 @@ func (server *NacosServer) callConfigServer(api string, params map[string]string
 
 	signHeaders := getSignHeaders(params, newHeaders)
 
-	url := curServer + contextPath + api
-
+	url := "http://" + curServer + contextPath + api
 	headers := map[string][]string{}
 	for k, v := range newHeaders {
 		if k != "accessKey" && k != "secretKey" {
@@ -137,8 +134,7 @@ func (server *NacosServer) callServer(api string, params map[string]string, meth
 		contextPath = constant.WEB_CONTEXT
 	}
 
-	url := curServer + contextPath + api
-
+	url := "http://" + curServer + contextPath + api
 	headers := map[string][]string{}
 	headers["Client-Version"] = []string{constant.CLIENT_VERSION}
 	headers["User-Agent"] = []string{constant.CLIENT_VERSION}
@@ -248,10 +244,8 @@ func (server *NacosServer) initRefreshSrvIfNeed() {
 	}
 	server.refreshServerSrvIfNeed()
 	go func() {
-		for {
-			time.Sleep(time.Duration(1) * time.Second)
-			server.refreshServerSrvIfNeed()
-		}
+		time.Sleep(time.Duration(1) * time.Second)
+		server.refreshServerSrvIfNeed()
 	}()
 
 }
@@ -268,10 +262,6 @@ func (server *NacosServer) refreshServerSrvIfNeed() {
 	logger.Infof("http nacos server list: <%s>", result)
 
 	var servers []constant.ServerConfig
-	contextPath := server.contextPath
-	if len(contextPath) == 0 {
-		contextPath = constant.WEB_CONTEXT
-	}
 	for _, line := range list {
 		if line != "" {
 			splitLine := strings.Split(strings.TrimSpace(line), ":")
@@ -284,8 +274,7 @@ func (server *NacosServer) refreshServerSrvIfNeed() {
 					continue
 				}
 			}
-
-			servers = append(servers, constant.ServerConfig{Scheme: constant.DEFAULT_SERVER_SCHEME, IpAddr: splitLine[0], Port: uint64(port), ContextPath: contextPath})
+			servers = append(servers, constant.ServerConfig{IpAddr: splitLine[0], Port: uint64(port), ContextPath: constant.WEB_CONTEXT})
 		}
 	}
 	if len(servers) > 0 {
@@ -298,6 +287,7 @@ func (server *NacosServer) refreshServerSrvIfNeed() {
 		}
 
 	}
+
 	return
 }
 
@@ -313,10 +303,7 @@ func injectSecurityInfo(server *NacosServer, param map[string]string) {
 }
 
 func getAddress(cfg constant.ServerConfig) string {
-	if strings.Index(cfg.IpAddr, "http://") >= 0 || strings.Index(cfg.IpAddr, "https://") >= 0 {
-		return cfg.IpAddr + ":" + strconv.Itoa(int(cfg.Port))
-	}
-	return cfg.Scheme + "://" + cfg.IpAddr + ":" + strconv.Itoa(int(cfg.Port))
+	return cfg.IpAddr + ":" + strconv.Itoa(int(cfg.Port))
 }
 
 func getSignHeaders(params map[string]string, newHeaders map[string]string) map[string]string {

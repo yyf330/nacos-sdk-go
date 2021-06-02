@@ -63,7 +63,9 @@ type IConfigClient interface {
 	// tenant ==>nacos.namespace optional
 	// pageNo  option,default is 1
 	// pageSize option,default is 10
-	SearchConfig(param vo.SearchConfigParam) (*model.ConfigPage, error)
+	SearchConfig(param vo.SearchConfigParm) (*model.ConfigPage, error)
 
-	PublishAggr(param vo.ConfigParam) (published bool, err error)
+	SearchConfigHistory(param vo.SearchConfigParm) (*model.ConfigPage, error)
+
+	GetConfigHistoryPre(param vo.SearchConfigParm) (string, error)
 }
