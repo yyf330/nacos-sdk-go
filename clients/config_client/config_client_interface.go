@@ -67,5 +67,5 @@ type IConfigClient interface {
 
 	SearchConfigHistory(param vo.SearchConfigParm) (*model.ConfigPage, error)
 
-	GetConfigHistoryPre(param vo.SearchConfigParm) (string, error)
+	GetConfigHistoryPre(id string) (content string, err error)
 }
