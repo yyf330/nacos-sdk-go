@@ -24,14 +24,14 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
-	"github.com/nacos-group/nacos-sdk-go/clients/nacos_client"
-	"github.com/nacos-group/nacos-sdk-go/common/constant"
-	"github.com/nacos-group/nacos-sdk-go/common/http_agent"
-	"github.com/nacos-group/nacos-sdk-go/mock"
-	"github.com/nacos-group/nacos-sdk-go/model"
-	"github.com/nacos-group/nacos-sdk-go/util"
-	"github.com/nacos-group/nacos-sdk-go/vo"
 	"github.com/stretchr/testify/assert"
+	"github.com/yyf330/nacos-sdk-go/clients/nacos_client"
+	"github.com/yyf330/nacos-sdk-go/common/constant"
+	"github.com/yyf330/nacos-sdk-go/common/http_agent"
+	"github.com/yyf330/nacos-sdk-go/mock"
+	"github.com/yyf330/nacos-sdk-go/model"
+	"github.com/yyf330/nacos-sdk-go/util"
+	"github.com/yyf330/nacos-sdk-go/vo"
 )
 
 var clientConfigTest = constant.ClientConfig{

@@ -21,8 +21,8 @@ import (
 	"net/http"
 
 	"github.com/go-errors/errors"
-	"github.com/nacos-group/nacos-sdk-go/common/logger"
-	"github.com/nacos-group/nacos-sdk-go/util"
+	"github.com/yyf330/nacos-sdk-go/common/logger"
+	"github.com/yyf330/nacos-sdk-go/util"
 )
 
 type HttpAgent struct {

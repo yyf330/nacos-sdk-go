@@ -19,11 +19,11 @@ package naming_client
 import (
 	"testing"
 
-	"github.com/nacos-group/nacos-sdk-go/common/nacos_server"
+	"github.com/yyf330/nacos-sdk-go/common/nacos_server"
 
-	"github.com/nacos-group/nacos-sdk-go/model"
-	"github.com/nacos-group/nacos-sdk-go/util"
 	"github.com/stretchr/testify/assert"
+	"github.com/yyf330/nacos-sdk-go/model"
+	"github.com/yyf330/nacos-sdk-go/util"
 )
 
 func TestBeatReactor_AddBeatInfo(t *testing.T) {

@@ -4,9 +4,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/nacos-group/nacos-sdk-go/common/constant"
-	"github.com/nacos-group/nacos-sdk-go/vo"
 	"github.com/stretchr/testify/assert"
+	"github.com/yyf330/nacos-sdk-go/common/constant"
+	"github.com/yyf330/nacos-sdk-go/vo"
 )
 
 func TestSetConfigClient(t *testing.T) {

@@ -19,12 +19,12 @@ package clients
 import (
 	"errors"
 
-	"github.com/nacos-group/nacos-sdk-go/clients/config_client"
-	"github.com/nacos-group/nacos-sdk-go/clients/nacos_client"
-	"github.com/nacos-group/nacos-sdk-go/clients/naming_client"
-	"github.com/nacos-group/nacos-sdk-go/common/constant"
-	"github.com/nacos-group/nacos-sdk-go/common/http_agent"
-	"github.com/nacos-group/nacos-sdk-go/vo"
+	"github.com/yyf330/nacos-sdk-go/clients/config_client"
+	"github.com/yyf330/nacos-sdk-go/clients/nacos_client"
+	"github.com/yyf330/nacos-sdk-go/clients/naming_client"
+	"github.com/yyf330/nacos-sdk-go/common/constant"
+	"github.com/yyf330/nacos-sdk-go/common/http_agent"
+	"github.com/yyf330/nacos-sdk-go/vo"
 )
 
 // CreateConfigClient use to create config client

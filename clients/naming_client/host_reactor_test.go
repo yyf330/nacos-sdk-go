@@ -19,12 +19,12 @@ package naming_client
 import (
 	"testing"
 
-	"github.com/nacos-group/nacos-sdk-go/clients/nacos_client"
-	"github.com/nacos-group/nacos-sdk-go/common/constant"
-	"github.com/nacos-group/nacos-sdk-go/common/http_agent"
-	"github.com/nacos-group/nacos-sdk-go/util"
-	"github.com/nacos-group/nacos-sdk-go/vo"
 	"github.com/stretchr/testify/assert"
+	"github.com/yyf330/nacos-sdk-go/clients/nacos_client"
+	"github.com/yyf330/nacos-sdk-go/common/constant"
+	"github.com/yyf330/nacos-sdk-go/common/http_agent"
+	"github.com/yyf330/nacos-sdk-go/util"
+	"github.com/yyf330/nacos-sdk-go/vo"
 )
 
 func TestHostReactor_GetServiceInfo(t *testing.T) {
