@@ -290,6 +290,7 @@ func Test_PublishConfig(t *testing.T) {
 	success, err := client.PublishConfig(vo.ConfigParam{
 		DataId:  "dataId",
 		Group:   "group",
+		Type:    "yaml",
 		Content: "hello world2!"})
 
 	assert.Nil(t, err)
