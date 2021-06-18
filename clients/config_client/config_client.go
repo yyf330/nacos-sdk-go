@@ -506,6 +506,22 @@ func (client *ConfigClient) SearchConfigHistory(param vo.SearchConfigParm) (*mod
 	return client.searchConfigHistoryInner(param)
 }
 
+func (client *ConfigClient) GetConfigHistoryDetailById(id string) (*model.ConfigItem, error) {
+	return client.getConfigHistoryDetailInner(id)
+}
+
+func (client *ConfigClient) getConfigHistoryDetailInner(id string) (*model.ConfigItem, error) {
+	if len(id) <= 0 {
+		err := errors.New("[client.GetConfigHistoryDetailById] id can not be empty")
+		return nil, err
+	}
+
+	clientConfig, _ := client.GetClientConfig()
+	tenant := clientConfig.NamespaceId
+
+	return client.configProxy.GetConfigHistoryDetailProxy(id, tenant, clientConfig.AccessKey, clientConfig.SecretKey)
+}
+
 func (client *ConfigClient) searchConfigHistoryInner(param vo.SearchConfigParm) (*model.ConfigPage, error) {
 	if param.Search != "accurate" && param.Search != "blur" {
 		return nil, errors.New("[client.searchConfigHistoryInner] param.search must be accurate or blur")

@@ -143,6 +143,14 @@ func Test_GetConfig(t *testing.T) {
 	assert.Equal(t, "hello world!222222", content)
 }
 
+func Test_GetHistoryConfigDetail(t *testing.T) {
+
+	client := cretateConfigClientTest()
+	content, err := client.GetConfigHistoryDetailById("1")
+	assert.Nil(t, err)
+	t.Log(content)
+}
+
 func Test_SearchConfig(t *testing.T) {
 	client := cretateConfigClientTest()
 	configPage, err := client.SearchConfig(vo.SearchConfigParm{

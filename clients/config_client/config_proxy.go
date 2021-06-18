@@ -104,6 +104,33 @@ func (cp *ConfigProxy) GetConfigHistoryPre(id, tenant, accessKey, secretKey stri
 	return result, err
 }
 
+func (cp *ConfigProxy) GetConfigHistoryDetailProxy(id, tenant, accessKey, secretKey string) (*model.ConfigItem, error) {
+	var params = map[string]string{}
+
+	//query
+	params["nid"] = id
+
+	if len(tenant) > 0 {
+		params["tenant"] = tenant
+	}
+
+	var headers = map[string]string{}
+	headers["accessKey"] = accessKey
+	headers["secretKey"] = secretKey
+
+	result, err := cp.nacosServer.ReqConfigApi(constant.CONFIGHISTORYPATH, params, headers, http.MethodGet, cp.clientConfig.TimeoutMs)
+	if err != nil {
+		return nil, err
+	}
+
+	var config model.ConfigItem
+	err = json.Unmarshal([]byte(result), &config)
+	if err != nil {
+		return nil, err
+	}
+	return &config, err
+}
+
 func (cp *ConfigProxy) SearchConfigHistoryProxy(param vo.SearchConfigParm, tenant, accessKey, secretKey string) (*model.ConfigPage, error) {
 	params := util.TransformObject2Param(param)
 	if len(tenant) > 0 {
