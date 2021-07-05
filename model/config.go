@@ -23,7 +23,8 @@ type ConfigItem struct {
 	Content string `param:"content"`
 	Md5     string `param:"md5"`
 	Tenant  string `param:"tenant"`
-	Appname string `param:"appname"`
+	Appname string `param:"appName"`
+	Type    string `param:"type"`
 }
 
 type ConfigPage struct {

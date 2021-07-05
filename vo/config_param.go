@@ -23,6 +23,7 @@ type ConfigParam struct {
 	DataId    string `param:"dataId"`  //required
 	Group     string `param:"group"`   //required
 	Content   string `param:"content"` //required
+	AppName   string `param:"appName"`
 	Type      string `param:"type"`
 	OnChange  func(namespace, group, dataId, data string)
 }
