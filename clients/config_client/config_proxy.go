@@ -131,7 +131,7 @@ func (cp *ConfigProxy) GetConfigHistoryDetailProxy(id, tenant, accessKey, secret
 	return &config, err
 }
 
-func (cp *ConfigProxy) SearchConfigHistoryProxy(param vo.SearchConfigParm, tenant, accessKey, secretKey string) (*model.ConfigPage, error) {
+func (cp *ConfigProxy) SearchConfigHistoryProxy(param vo.SearchHistoryParam, tenant, accessKey, secretKey string) (*model.ConfigPage, error) {
 	params := util.TransformObject2Param(param)
 	if len(tenant) > 0 {
 		params["tenant"] = tenant

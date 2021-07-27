@@ -17,14 +17,16 @@
 package model
 
 type ConfigItem struct {
-	Id      string `param:"id"`
-	DataId  string `param:"dataId"`
-	Group   string `param:"group"`
-	Content string `param:"content"`
-	Md5     string `param:"md5"`
-	Tenant  string `param:"tenant"`
-	Appname string `param:"appName"`
-	Type    string `param:"type"`
+	Id               string `param:"id"`
+	DataId           string `param:"dataId"`
+	Group            string `param:"group"`
+	Content          string `param:"content"`
+	Md5              string `param:"md5"`
+	Tenant           string `param:"tenant"`
+	Appname          string `param:"appName"`
+	Type             string `param:"type"`
+	CreatedTime      string `json:"createdTime"`
+	LastModifiedTime string `json:"lastModifiedTime"`
 }
 
 type ConfigPage struct {

@@ -502,7 +502,7 @@ func (client *ConfigClient) searchConfigInner(param vo.SearchConfigParm) (*model
 	return configItems, nil
 }
 
-func (client *ConfigClient) SearchConfigHistory(param vo.SearchConfigParm) (*model.ConfigPage, error) {
+func (client *ConfigClient) SearchConfigHistory(param vo.SearchHistoryParam) (*model.ConfigPage, error) {
 	return client.searchConfigHistoryInner(param)
 }
 
@@ -522,7 +522,7 @@ func (client *ConfigClient) getConfigHistoryDetailInner(id string) (*model.Confi
 	return client.configProxy.GetConfigHistoryDetailProxy(id, tenant, clientConfig.AccessKey, clientConfig.SecretKey)
 }
 
-func (client *ConfigClient) searchConfigHistoryInner(param vo.SearchConfigParm) (*model.ConfigPage, error) {
+func (client *ConfigClient) searchConfigHistoryInner(param vo.SearchHistoryParam) (*model.ConfigPage, error) {
 	if param.Search != "accurate" && param.Search != "blur" {
 		return nil, errors.New("[client.searchConfigHistoryInner] param.search must be accurate or blur")
 	}
@@ -536,9 +536,6 @@ func (client *ConfigClient) searchConfigHistoryInner(param vo.SearchConfigParm) 
 	clientConfig, _ := client.GetClientConfig()
 	tenant := clientConfig.NamespaceId
 
-	if param.Namespace != "" {
-		tenant = param.Namespace
-	}
 	configItems, err := client.configProxy.SearchConfigHistoryProxy(param, tenant, clientConfig.AccessKey, clientConfig.SecretKey)
 	if err != nil {
 		logger.Errorf("search config from server error:%+v ", err)

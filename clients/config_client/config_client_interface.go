@@ -65,7 +65,7 @@ type IConfigClient interface {
 	// pageSize option,default is 10
 	SearchConfig(param vo.SearchConfigParm) (*model.ConfigPage, error)
 
-	SearchConfigHistory(param vo.SearchConfigParm) (*model.ConfigPage, error)
+	SearchConfigHistory(param vo.SearchHistoryParam) (*model.ConfigPage, error)
 
 	GetConfigHistoryDetailById(id string) (*model.ConfigItem, error)
 
