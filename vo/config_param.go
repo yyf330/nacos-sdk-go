@@ -40,9 +40,10 @@ type SearchConfigParm struct {
 }
 
 type SearchHistoryParam struct {
-	Search   string `param:"search"`
-	DataId   string `param:"dataId"`
-	Group    string `param:"group"`
-	PageNo   int    `param:"pageNo"`
-	PageSize int    `param:"pageSize"`
+	Namespace string `param:"namespace"`
+	Search    string `param:"search"`
+	DataId    string `param:"dataId"`
+	Group     string `param:"group"`
+	PageNo    int    `param:"pageNo"`
+	PageSize  int    `param:"pageSize"`
 }

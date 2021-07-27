@@ -535,6 +535,9 @@ func (client *ConfigClient) searchConfigHistoryInner(param vo.SearchHistoryParam
 
 	clientConfig, _ := client.GetClientConfig()
 	tenant := clientConfig.NamespaceId
+	if param.Namespace != "" {
+		tenant = param.Namespace
+	}
 
 	configItems, err := client.configProxy.SearchConfigHistoryProxy(param, tenant, clientConfig.AccessKey, clientConfig.SecretKey)
 	if err != nil {
